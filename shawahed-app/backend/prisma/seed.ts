@@ -1,8 +1,7 @@
 // بذرة البيانات الأولية
 // تشغيل: npx prisma db seed
 
-import { PrismaClient, Role } from '@prisma/client';
-
+import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 // ⚠️ تحقّق من الصياغة الرسمية الحديثة لبنود تقويم الأداء من نموذج الوزارة قبل الإطلاق
@@ -40,7 +39,7 @@ async function main() {
       school: 'ثانوية الملك فهد',
       stage: 'الثانوية',
       mobile: '0555000111',
-      role: Role.TEACHER,
+      role: 'TEACHER',
     },
   });
 
@@ -52,7 +51,7 @@ async function main() {
       accessCode: 'MOE-ADMIN-9000',
       fullName: 'مدير النظام',
       email: 'admin@shawahed.edu.sa',
-      role: Role.ADMIN,
+      role: 'ADMIN',
     },
   });
 
