@@ -52,12 +52,13 @@ export const api = {
     const fd = new FormData();
     fd.append('file', file);
     return req('/settings/logo', { method: 'POST', body: fd });
+  },
+  // إدارة المعلمين (للإدارة)
   createTeacher: (data: { fullName: string; mobile?: string }) =>
     req('/admin/teachers', { method: 'POST', body: JSON.stringify(data) }),
   listTeachers: () => req('/admin/teachers'),
   deleteTeacher: (id: string) =>
     req(`/admin/teachers/${id}`, { method: 'DELETE' }),
-  },
   exportUrl: (format: 'docx' | 'pdf') => `${API}/export/${format}`,
 };
 
