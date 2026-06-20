@@ -1,0 +1,82 @@
+// شواهد · مخطط قاعدة البيانات
+// Prisma + PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  TEACHER
+  ADMIN
+}
+
+// إعدادات الموقع — صفّ واحد فقط (id = 1) يتحكم به المدير
+model SiteSettings {
+  id          Int      @id @default(1)
+  siteName    String   @default("شواهد")
+  tagline     String   @default("منصة توثيق الأداء الوظيفي للمعلمين")
+  logoUrl     String? // رابط الشعار (اختياري)
+  colorPrimary   String @default("#0f3d2e") // الأخضر الأساسي
+  colorAccent    String @default("#caa84a") // الذهبي
+  // تسميات الخانات الست — يعدّلها المدير
+  labelIndicators String @default("بنود الأداء الوظيفي")
+  labelProfile    String @default("بيانات المعلم")
+  labelEvidence   String @default("الشواهد")
+  labelProgress   String @default("التقدم")
+  labelAlerts     String @default("التنبيهات")
+  labelSummary    String @default("ملخص العمل")
+  footerText   String @default("وزارة التعليم · المملكة العربية السعودية")
+  updatedAt    DateTime @updatedAt
+}
+
+model Teacher {
+  id         String     @id @default(cuid())
+  accessCode String     @unique // الكود الخاص للدخول
+  fullName   String
+  email      String     @unique
+  subject    String?
+  school     String?
+  stage      String? // المرحلة الدراسية
+  mobile     String?
+  role       Role       @default(TEACHER)
+  // إعدادات التنبيهات
+  semesterStart  DateTime? // تاريخ بدء الفصل الدراسي
+  alertFrequency String    @default("weekly") // daily | weekly | monthly
+  // الجدول الدراسي (JSON: قائمة حصص بها اليوم والحصة والمادة)
+  schedule       Json?
+  evidences  Evidence[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([accessCode])
+}
+
+model Indicator {
+  id         Int        @id // 1..11
+  titleAr    String
+  weekNumber Int? // الأسبوع المرتبط بالبند في الفصل الدراسي
+  orderIndex Int        @default(0)
+  evidences  Evidence[]
+}
+
+model Evidence {
+  id          String   @id @default(cuid())
+  teacherId   String
+  indicatorId Int
+  imageUrl    String // المسار الكامل للصورة على التخزين
+  thumbUrl    String? // مسار المصغّر
+  fileName    String?
+  sizeBytes   Int?
+  createdAt   DateTime @default(now())
+
+  teacher   Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  indicator Indicator @relation(fields: [indicatorId], references: [id])
+
+  // الفهرس يسرّع عدّ الصور لفرض حد الـ4 وحساب نسبة الإنجاز
+  @@index([teacherId, indicatorId])
+}

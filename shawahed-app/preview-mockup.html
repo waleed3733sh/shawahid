@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>شواهد · منصة توثيق الأداء الوظيفي للمعلمين</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&family=Cairo:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Tajawal','sans-serif'], display: ['Cairo','sans-serif'] },
+      colors: {
+        forest: { 900:'#0b2e22', 800:'#0f3d2e', 700:'#15543f', 600:'#1c6b50' },
+        gold:   { 500:'#caa84a', 600:'#b8973f', 400:'#d8bd6e' },
+        sand:   '#f6f8f5', cream:'#fbfcfa'
+      }
+    }
+  }
+}
+</script>
+<style>
+  body{ background:#f6f8f5; }
+  .scrollbar-thin::-webkit-scrollbar{ width:6px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb{ background:#caa84a55; border-radius:99px; }
+  .fade-in{ animation:fade .4s ease both; }
+  @keyframes fade{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
+  .card{ background:#fff; border:1px solid #eef1ee; border-radius:1.25rem; }
+  .hideprint{}
+  @media print{
+    .hideprint{ display:none !important; }
+    body{ background:#fff; }
+  }
+  @media (prefers-reduced-motion: reduce){ .fade-in{ animation:none; } }
+</style>
+</head>
+<body class="font-sans text-forest-900">
+
+<!-- ============ APP ROOT ============ -->
+<div id="app"></div>
+
+<script>
+/* ============================================================
+   STATE  (in-memory mock — يُستبدل لاحقاً بـ NestJS + Prisma)
+============================================================ */
+
+const INDICATORS = [
+  { id:1,  title:'أداء الواجبات الوظيفية',        week:1 },
+  { id:2,  title:'التفاعل مع المجتمع المهني',     week:2 },
+  { id:3,  title:'التفاعل مع أولياء الأمور',      week:3 },
+  { id:4,  title:'تنويع استراتيجيات التدريس',     week:4 },
+  { id:5,  title:'تحسين نواتج التعلم',            week:5 },
+  { id:6,  title:'إعداد وتنفيذ خطة التعلم',       week:6 },
+  { id:7,  title:'توظيف التقنية في التعليم',      week:7 },
+  { id:8,  title:'تهيئة البيئة التعليمية',        week:8 },
+  { id:9,  title:'الإدارة الصفية',                week:9 },
+  { id:10, title:'تحليل نتائج المتعلمين وتشخيصها', week:10 },
+  { id:11, title:'تنويع أساليب التقويم',          week:11 },
+];
+
+// ملاحظة: تحقّق من الصياغة الرسمية الحديثة لبنود تقويم الأداء من نموذج الوزارة قبل الإطلاق
+
+const state = {
+  // قاعدة بيانات المعلمين (مفتاح = الكود الخاص)
+  teachers: {
+    'T-1024': {
+      code:'T-1024', fullName:'أ. وليد الزهراني', email:'waleed@school.edu.sa',
+      subject:'الحاسب وتقنية المعلومات', school:'ثانوية الملك فهد', stage:'الثانوية',
+      mobile:'0555000111',
+      evidence: { 1:['s1','s2'], 4:['s3'], 7:['s4','s5','s6'] } // محاكاة صور مرفوعة
+    },
+    'T-2048': {
+      code:'T-2048', fullName:'أ. نورة القحطاني', email:'noura@school.edu.sa',
+      subject:'اللغة العربية', school:'متوسطة الأندلس', stage:'المتوسطة',
+      mobile:'0555222333', evidence:{}
+    }
+  },
+  ADMIN_CODE: 'MOE-ADMIN-9000', // كود الدخول المخفي للإدارة
+  // إعدادات الموقع — يتحكم بها المدير فقط
+  site: {
+    siteName:'شواهد', tagline:'منصة توثيق الأداء الوظيفي للمعلمين', logoUrl:'',
+    colorPrimary:'#0f3d2e', colorAccent:'#caa84a',
+    labelIndicators:'بنود الأداء الوظيفي', labelProfile:'بيانات المعلم',
+    labelEvidence:'الشواهد', labelProgress:'التقدم',
+    labelAlerts:'التنبيهات', labelSummary:'ملخص العمل',
+    footerText:'وزارة التعليم · المملكة العربية السعودية'
+  },
+  siteDirty:false,
+  session: null,   // { type:'teacher'|'admin', code }
+  page: 'indicators',
+  toast: null
+};
+
+/* ============================================================
+   HELPERS
+============================================================ */
+const $ = (s)=>document.querySelector(s);
+const el = (id)=>document.getElementById(id);
+function teacher(){ return state.session?.type==='teacher' ? state.teachers[state.session.code] : null; }
+function progressPct(t){
+  const done = INDICATORS.filter(i => (t.evidence[i.id]||[]).length>0).length;
+  return { done, total:INDICATORS.length, pct: Math.round(done/INDICATORS.length*100) };
+}
+function totalImages(t){ return Object.values(t.evidence).reduce((a,arr)=>a+arr.length,0); }
+function toast(msg){
+  state.toast = msg; render();
+  setTimeout(()=>{ state.toast=null; render(); }, 2200);
+}
+function currentWeek(){ return 4; } // محاكاة الأسبوع الدراسي الحالي
+
+/* ============================================================
+   AUTH HANDLERS
+============================================================ */
+function login(){
+  const code = el('loginCode').value.trim();
+  if(code === state.ADMIN_CODE){ state.session={type:'admin',code}; state.page='admin-site'; render(); return; }
+  if(state.teachers[code]){ state.session={type:'teacher',code}; state.page='indicators'; render(); return; }
+  el('loginErr').classList.remove('hidden');
+}
+function logout(){ state.session=null; render(); }
+function go(p){ state.page=p; render(); }
+
+/* رفع صورة (محاكاة) — الخادم الحقيقي يفرض الحد الأقصى */
+function addImage(indId){
+  const t = teacher();
+  const arr = t.evidence[indId] || (t.evidence[indId]=[]);
+  if(arr.length>=4){ toast('الحد الأقصى 4 صور لكل بند'); return; }
+  arr.push('img-'+Date.now());
+  toast('تم رفع الشاهد بنجاح');
+}
+function delImage(indId, idx){
+  teacher().evidence[indId].splice(idx,1);
+  if(teacher().evidence[indId].length===0) delete teacher().evidence[indId];
+  toast('تم حذف الشاهد');
+}
+function saveProfile(){
+  const t = teacher();
+  ['fullName','subject','school','stage','mobile','email'].forEach(f=>{
+    if(el('pf_'+f)) t[f] = el('pf_'+f).value;
+  });
+  toast('تم حفظ التعديلات');
+}
+
+/* ============================================================
+   VIEWS
+============================================================ */
+function loginView(){
+  return `
+  <div class="min-h-screen flex">
+    <!-- الجانب البصري -->
+    <div class="hidden md:flex md:w-1/2 bg-forest-800 text-white flex-col justify-between p-12 relative overflow-hidden">
+      <div class="absolute -top-20 -left-20 w-80 h-80 rounded-full bg-gold-500/10"></div>
+      <div class="absolute bottom-10 -right-10 w-64 h-64 rounded-full bg-gold-500/10"></div>
+      <div class="relative">
+        <div class="flex items-center gap-3 mb-2">
+          <div class="w-12 h-12 rounded-2xl bg-gold-500 grid place-items-center text-forest-900 font-display font-extrabold text-2xl">ش</div>
+          <span class="font-display text-2xl font-extrabold">شواهد</span>
+        </div>
+        <p class="text-gold-400 text-sm">منصة توثيق الأداء الوظيفي للمعلمين</p>
+      </div>
+      <div class="relative">
+        <h2 class="font-display text-4xl font-extrabold leading-snug mb-4">وثّق شواهد أدائك<br>في مكان واحد منظّم</h2>
+        <p class="text-white/70 leading-relaxed max-w-md">منصة احترافية لإدارة بنود الأداء الوظيفي الـ ١١، رفع الشواهد، متابعة نسبة الإنجاز، وتصدير ملف أداء كامل بصيغة Word و PDF.</p>
+        <div class="flex gap-6 mt-8">
+          <div><div class="font-display text-3xl font-extrabold text-gold-500">١١</div><div class="text-xs text-white/60">بنداً وظيفياً</div></div>
+          <div><div class="font-display text-3xl font-extrabold text-gold-500">٤</div><div class="text-xs text-white/60">شواهد لكل بند</div></div>
+          <div><div class="font-display text-3xl font-extrabold text-gold-500">PDF</div><div class="text-xs text-white/60">تصدير احترافي</div></div>
+        </div>
+      </div>
+      <div class="relative text-xs text-white/40">وزارة التعليم · المملكة العربية السعودية</div>
+    </div>
+
+    <!-- نموذج الدخول -->
+    <div class="w-full md:w-1/2 flex items-center justify-center p-8 bg-cream">
+      <div class="w-full max-w-sm fade-in">
+        <div class="md:hidden flex items-center gap-3 mb-8 justify-center">
+          <div class="w-11 h-11 rounded-2xl bg-forest-800 grid place-items-center text-gold-500 font-display font-extrabold text-xl">ش</div>
+          <span class="font-display text-2xl font-extrabold">شواهد</span>
+        </div>
+        <h1 class="font-display text-3xl font-extrabold mb-1">تسجيل الدخول</h1>
+        <p class="text-gray-500 mb-8">أدخل الكود الخاص بك للوصول إلى ملف أدائك</p>
+
+        <label class="block text-sm font-bold mb-2">الكود الخاص</label>
+        <input id="loginCode" placeholder="مثال: T-1024"
+          class="w-full border border-gray-200 rounded-xl px-4 py-3 mb-1 focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none text-center tracking-widest font-bold"
+          onkeydown="if(event.key==='Enter')login()">
+        <p id="loginErr" class="hidden text-red-600 text-sm mb-2">الكود غير صحيح. تحقق ثم أعد المحاولة.</p>
+
+        <button onclick="login()" class="w-full bg-forest-800 hover:bg-forest-700 text-white font-bold py-3 rounded-xl mt-4 shadow-lg shadow-forest-800/20 transition">
+          الدخول إلى لوحة التحكم
+        </button>
+
+        <div class="mt-8 p-4 rounded-xl bg-sand text-xs text-gray-500 leading-relaxed">
+          <span class="font-bold text-forest-700">للتجربة:</span>
+          معلم <code class="bg-white px-1 rounded">T-1024</code> أو <code class="bg-white px-1 rounded">T-2048</code> ·
+          إدارة <code class="bg-white px-1 rounded">MOE-ADMIN-9000</code>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// المسار والأيقونة ومفتاح التسمية — التسمية تأتي من إعدادات الموقع
+const NAV = [
+  ['indicators','labelIndicators','📋'],
+  ['profile','labelProfile','👤'],
+  ['evidence','labelEvidence','🖼️'],
+  ['progress','labelProgress','📊'],
+  ['alerts','labelAlerts','🔔'],
+  ['summary','labelSummary','📁'],
+];
+function navLabel(key){ return state.site[key]; }
+
+function sidebar(active){
+  const s=state.site;
+  return `
+  <aside class="hideprint w-64 shrink-0 text-white flex-col py-6 px-3 hidden lg:flex sticky top-0 h-screen" style="background:${s.colorPrimary}">
+    <div class="flex items-center gap-3 px-3 mb-8">
+      ${s.logoUrl?`<img src="${s.logoUrl}" class="w-10 h-10 rounded-xl object-cover">`:`<div class="w-10 h-10 rounded-xl grid place-items-center font-display font-extrabold text-xl" style="background:${s.colorAccent};color:${s.colorPrimary}">${(s.siteName||'ش')[0]}</div>`}
+      <div><div class="font-display font-extrabold">${s.siteName}</div><div class="text-[10px] text-gold-400">ملف الأداء الوظيفي</div></div>
+    </div>
+    <nav class="flex-1 space-y-1">
+      ${NAV.map(([id,key,icon])=>`
+        <button onclick="go('${id}')" class="w-full text-right flex items-center gap-3 px-4 py-3 rounded-xl transition"
+          style="${active===id?`background:${s.colorAccent};color:${s.colorPrimary};font-weight:700`:'color:rgba(255,255,255,.9)'}">
+          <span>${icon}</span><span>${navLabel(key)}</span>
+        </button>`).join('')}
+    </nav>
+    <button onclick="logout()" class="text-right flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/10 text-white/70">
+      <span>↩</span><span>تسجيل الخروج</span>
+    </button>
+  </aside>`;
+}
+
+function mobileNav(active){
+  return `
+  <div class="hideprint lg:hidden flex overflow-x-auto gap-2 px-4 py-3 bg-forest-800 scrollbar-thin">
+    ${NAV.map(([id,key,icon])=>`
+      <button onclick="go('${id}')" class="whitespace-nowrap px-3 py-2 rounded-lg text-sm
+        ${active===id?'bg-gold-500 text-forest-900 font-bold':'text-white/80 bg-white/5'}">${icon} ${navLabel(key)}</button>`).join('')}
+  </div>`;
+}
+
+function topbar(title, withExport){
+  return `
+  <header class="hideprint h-16 bg-white border-b border-gray-100 flex items-center justify-between px-5 lg:px-8 sticky top-0 z-20">
+    <h2 class="font-display font-extrabold text-lg text-forest-800">${title}</h2>
+    <div class="flex items-center gap-2">
+      ${withExport?`
+        <button onclick="exportDoc('pdf')" class="text-sm bg-forest-50 text-forest-700 border border-forest-700/20 px-3 py-2 rounded-xl hover:bg-forest-100 transition">⬇ PDF</button>
+        <button onclick="exportDoc('docx')" class="text-sm bg-forest-50 text-forest-700 border border-forest-700/20 px-3 py-2 rounded-xl hover:bg-forest-100 transition">⬇ Word</button>`:''}
+      <button onclick="toast('تم حفظ التعديلات')" class="bg-gold-500 hover:bg-gold-600 text-forest-900 font-bold px-5 py-2 rounded-xl shadow transition">حفظ التعديلات</button>
+    </div>
+  </header>`;
+}
+
+/* ---------- صفحات المعلم ---------- */
+function pageIndicators(t){
+  return `
+  <div class="fade-in">
+    <p class="text-gray-500 mb-6">بنود تقويم الأداء الوظيفي الرسمية المعتمدة من وزارة التعليم. ارفع شاهداً واحداً على الأقل لكل بند لاكتمال ملفك.</p>
+    <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+      ${INDICATORS.map(i=>{
+        const n=(t.evidence[i.id]||[]).length;
+        const done=n>0;
+        return `
+        <div class="card p-5 flex flex-col gap-3 hover:shadow-md transition">
+          <div class="flex items-start justify-between">
+            <div class="w-9 h-9 rounded-lg bg-forest-800 text-gold-500 grid place-items-center font-display font-extrabold">${i.id}</div>
+            <span class="text-xs px-2 py-1 rounded-full ${done?'bg-green-50 text-green-700':'bg-gray-100 text-gray-400'}">${done?'مكتمل':'بانتظار شاهد'}</span>
+          </div>
+          <h3 class="font-bold leading-snug">${i.title}</h3>
+          <div class="mt-auto flex items-center justify-between text-sm text-gray-400">
+            <span>${n}/4 شواهد</span>
+            <button onclick="go('evidence')" class="text-gold-600 font-bold hover:underline">إدارة الشواهد ←</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+function pageProfile(t){
+  const field=(id,label,val,type='text')=>`
+    <div>
+      <label class="block text-sm font-bold mb-2">${label}</label>
+      <input id="pf_${id}" type="${type}" value="${val||''}"
+        class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none">
+    </div>`;
+  return `
+  <div class="fade-in max-w-3xl">
+    <div class="card p-6 lg:p-8">
+      <div class="flex items-center gap-4 mb-8 pb-6 border-b border-gray-100">
+        <div class="w-16 h-16 rounded-2xl bg-forest-800 text-gold-500 grid place-items-center font-display text-2xl font-extrabold">${(t.fullName||'م')[2]||'م'}</div>
+        <div><div class="font-display font-extrabold text-xl">${t.fullName}</div><div class="text-gray-400 text-sm">كود المعلم: ${t.code}</div></div>
+      </div>
+      <p class="text-sm text-gray-500 mb-6">تُعبّأ هذه البيانات تلقائياً في التقارير والمستندات المُصدّرة.</p>
+      <div class="grid sm:grid-cols-2 gap-5">
+        ${field('fullName','الاسم الكامل',t.fullName)}
+        ${field('subject','المادة',t.subject)}
+        ${field('school','المدرسة',t.school)}
+        ${field('stage','المرحلة',t.stage)}
+        ${field('mobile','رقم الجوال',t.mobile,'tel')}
+        ${field('email','البريد الإلكتروني',t.email,'email')}
+      </div>
+      <button onclick="saveProfile()" class="mt-8 bg-forest-800 hover:bg-forest-700 text-white font-bold px-6 py-3 rounded-xl shadow transition">حفظ بيانات المعلم</button>
+    </div>
+  </div>`;
+}
+
+function pageEvidence(t){
+  return `
+  <div class="fade-in">
+    <p class="text-gray-500 mb-6">ارفع حتى ٤ صور لكل بند من الجوال أو الحاسب. تُخزَّن في مجلدك الخاص على الخادم.</p>
+    <div class="space-y-4">
+      ${INDICATORS.map(i=>{
+        const arr=t.evidence[i.id]||[];
+        const full=arr.length>=4;
+        return `
+        <div class="card p-5">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-forest-800 text-gold-500 grid place-items-center font-bold text-sm">${i.id}</div>
+              <h3 class="font-bold">${i.title}</h3>
+            </div>
+            <span class="text-sm ${full?'text-red-500':'text-gray-400'}">${arr.length}/4</span>
+          </div>
+          <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
+            ${arr.map((img,idx)=>`
+              <div class="relative group aspect-square">
+                <div class="w-full h-full rounded-lg bg-gradient-to-br from-forest-600 to-forest-800 grid place-items-center text-white/40 text-xs">شاهد</div>
+                <button onclick="delImage(${i.id},${idx})" class="absolute top-1 left-1 bg-red-600 text-white w-6 h-6 rounded-full opacity-0 group-hover:opacity-100 transition text-sm leading-none">×</button>
+              </div>`).join('')}
+            ${!full?`
+              <button onclick="addImage(${i.id})" class="aspect-square border-2 border-dashed border-gold-500/40 rounded-lg grid place-items-center text-gold-600 hover:bg-gold-500/5 transition text-sm">+ إضافة</button>`:''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+function pageProgress(t){
+  const {done,total,pct}=progressPct(t);
+  return `
+  <div class="fade-in max-w-3xl space-y-6">
+    <div class="card p-8 text-center">
+      <div class="relative w-44 h-44 mx-auto mb-6">
+        <svg viewBox="0 0 120 120" class="w-full h-full -rotate-90">
+          <circle cx="60" cy="60" r="52" fill="none" stroke="#eef1ee" stroke-width="12"/>
+          <circle cx="60" cy="60" r="52" fill="none" stroke="#caa84a" stroke-width="12" stroke-linecap="round"
+            stroke-dasharray="${2*Math.PI*52}" stroke-dashoffset="${2*Math.PI*52*(1-pct/100)}" style="transition:stroke-dashoffset .8s"/>
+        </svg>
+        <div class="absolute inset-0 grid place-items-center">
+          <div><div class="font-display text-4xl font-extrabold text-forest-800">${pct}%</div><div class="text-xs text-gray-400">نسبة الإنجاز</div></div>
+        </div>
+      </div>
+      <p class="text-gray-600">أكملت <b class="text-forest-700">${done}</b> من أصل <b>${total}</b> بنود</p>
+    </div>
+    <div class="card p-6">
+      <h3 class="font-bold mb-4">تفصيل البنود</h3>
+      <div class="space-y-2">
+        ${INDICATORS.map(i=>{
+          const c=(t.evidence[i.id]||[]).length;
+          return `<div class="flex items-center gap-3 text-sm">
+            <span class="w-6 h-6 rounded-md grid place-items-center text-xs font-bold ${c>0?'bg-green-100 text-green-700':'bg-gray-100 text-gray-400'}">${c>0?'✓':i.id}</span>
+            <span class="flex-1 ${c>0?'':'text-gray-400'}">${i.title}</span>
+            <span class="text-gray-400">${c}/4</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+function pageAlerts(t){
+  const wk=currentWeek();
+  const {pct}=progressPct(t);
+  const thisWeek=INDICATORS.find(i=>i.week===wk);
+  return `
+  <div class="fade-in max-w-3xl space-y-4">
+    <div class="card p-6 bg-gradient-to-l from-forest-800 to-forest-700 text-white border-0">
+      <div class="flex items-center gap-2 text-gold-400 text-sm mb-2">🔔 تنبيه الأسبوع ${wk}</div>
+      <h3 class="font-display text-xl font-extrabold mb-2">مهمة هذا الأسبوع: ${thisWeek.title}</h3>
+      <p class="text-white/70 text-sm">نسبة إنجازك الحالية ${pct}%. ارفع شواهد البند رقم ${thisWeek.id} هذا الأسبوع للبقاء على المسار.</p>
+      <button onclick="go('evidence')" class="mt-4 bg-gold-500 text-forest-900 font-bold px-4 py-2 rounded-xl text-sm">رفع شاهد البند ←</button>
+    </div>
+    <div class="card p-6">
+      <h3 class="font-bold mb-4">جدول البنود على أسابيع الفصل</h3>
+      <div class="space-y-2">
+        ${INDICATORS.map(i=>{
+          const c=(t.evidence[i.id]||[]).length;
+          const status = c>0?'done': (i.week<wk?'late': i.week===wk?'now':'soon');
+          const badge={done:['مكتمل','bg-green-100 text-green-700'],late:['متأخر','bg-red-100 text-red-600'],now:['هذا الأسبوع','bg-gold-500/20 text-gold-600'],soon:['قادم','bg-gray-100 text-gray-400']}[status];
+          return `<div class="flex items-center gap-3 text-sm py-1">
+            <span class="w-14 text-gray-400">أسبوع ${i.week}</span>
+            <span class="flex-1 font-medium">${i.title}</span>
+            <span class="text-xs px-2 py-1 rounded-full ${badge[1]}">${badge[0]}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+function pageSummary(t){
+  const {done,total,pct}=progressPct(t);
+  const imgs=totalImages(t);
+  const pending=INDICATORS.filter(i=>!(t.evidence[i.id]||[]).length);
+  return `
+  <div class="fade-in max-w-4xl" id="summaryPrint">
+    <div class="card p-8 mb-6">
+      <div class="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-gray-100">
+        <div>
+          <div class="font-display text-2xl font-extrabold">${t.fullName}</div>
+          <div class="text-gray-400 text-sm">${t.subject} · ${t.school} · ${t.stage}</div>
+        </div>
+        <div class="w-14 h-14 rounded-2xl bg-forest-800 text-gold-500 grid place-items-center font-display text-xl font-extrabold">ش</div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+        ${[['نسبة الإنجاز',pct+'%'],['بنود مكتملة',done+'/'+total],['إجمالي الشواهد',imgs],['بنود متبقية',pending.length]]
+          .map(([l,v])=>`<div class="bg-sand rounded-xl p-4 text-center"><div class="font-display text-2xl font-extrabold text-forest-800">${v}</div><div class="text-xs text-gray-500 mt-1">${l}</div></div>`).join('')}
+      </div>
+    </div>
+    ${pending.length?`
+    <div class="card p-6">
+      <h3 class="font-bold mb-3 text-red-600">مهام بانتظار الإنجاز</h3>
+      <div class="flex flex-wrap gap-2">
+        ${pending.map(i=>`<span class="text-sm bg-red-50 text-red-600 px-3 py-1 rounded-full">${i.id}. ${i.title}</span>`).join('')}
+      </div>
+    </div>`:`<div class="card p-6 text-center text-green-700 font-bold">🎉 اكتمل ملف الأداء بالكامل</div>`}
+  </div>`;
+}
+
+function dashboardView(){
+  const t=teacher();
+  const active=state.page;
+  let body='', title='', withExport=false;
+  switch(active){
+    case 'indicators': title=state.site.labelIndicators; body=pageIndicators(t); break;
+    case 'profile':    title=state.site.labelProfile;    body=pageProfile(t); break;
+    case 'evidence':   title=state.site.labelEvidence;   body=pageEvidence(t); break;
+    case 'progress':   title=state.site.labelProgress;   body=pageProgress(t); break;
+    case 'alerts':     title=state.site.labelAlerts;     body=pageAlerts(t); break;
+    case 'summary':    title=state.site.labelSummary; withExport=true; body=pageSummary(t); break;
+  }
+  return `
+  <div class="flex min-h-screen">
+    ${sidebar(active)}
+    <div class="flex-1 flex flex-col min-w-0">
+      ${mobileNav(active)}
+      ${topbar(title,withExport)}
+      <main class="flex-1 p-5 lg:p-8 max-w-7xl w-full">${body}</main>
+    </div>
+  </div>`;
+}
+
+/* ---------- لوحة الإدارة ---------- */
+/* ---------- لوحة إدارة الموقع (CMS) ---------- */
+function setSite(k,v){
+  state.site[k]=v;
+  if(!state.siteDirty){ state.siteDirty=true; refreshSaveBar(); }
+  // تحديث معاينة الشعار واسم الموقع فقط دون إعادة رسم تفقد التركيز
+  if(k==='siteName'){ const n=document.getElementById('siteNamePreview'); if(n) n.textContent=v; }
+}
+function refreshSaveBar(){
+  const lbl=document.getElementById('saveBarLabel');
+  const btn=document.getElementById('saveBarBtn');
+  if(lbl) lbl.textContent = state.siteDirty?'لديك تعديلات غير محفوظة':'لا توجد تعديلات';
+  if(btn) btn.className='bg-gold-500 hover:bg-gold-600 text-forest-900 font-bold px-6 py-2 rounded-xl '+(state.siteDirty?'':'opacity-40');
+}
+function saveSite(){ state.siteDirty=false; refreshSaveBar(); toast('تم حفظ بيانات الموقع'); }
+function exitAdminSave(){ if(state.siteDirty) saveSite(); logout(); }
+
+function adminView(){
+  const s=state.site;
+  const textFields=[['siteName','اسم الموقع'],['tagline','الوصف المختصر'],['logoUrl','رابط الشعار (Logo)'],['footerText','نص التذييل']];
+  const labelFields=[['labelIndicators','الخانة 1 · بنود الأداء'],['labelProfile','الخانة 2 · بيانات المعلم'],['labelEvidence','الخانة 3 · الشواهد'],['labelProgress','الخانة 4 · التقدم'],['labelAlerts','الخانة 5 · التنبيهات'],['labelSummary','الخانة 6 · ملخص العمل']];
+  return `
+  <div class="min-h-screen pb-28" dir="rtl">
+    <header class="h-16 text-white flex items-center justify-between px-5 lg:px-8 sticky top-0 z-30" style="background:#0b2e22">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gold-500 grid place-items-center text-forest-900 font-extrabold">⚙</div>
+        <div><div class="font-display font-extrabold leading-tight">إدارة الموقع</div><div class="text-[10px] text-gold-400">التحكم بهوية الموقع وبياناته</div></div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="go('indicators')" class="text-sm bg-white/10 hover:bg-white/20 px-3 py-2 rounded-xl">⌂ الصفحة الرئيسية</button>
+        <button onclick="exitAdminSave()" class="text-sm bg-white/10 hover:bg-white/20 px-3 py-2 rounded-xl">↩ خروج وحفظ</button>
+      </div>
+    </header>
+
+    <main class="p-5 lg:p-8 max-w-4xl mx-auto space-y-6 fade-in">
+      <!-- هوية الموقع -->
+      <section class="card p-6">
+        <h2 class="font-display font-extrabold text-lg text-forest-800 mb-1">هوية الموقع</h2>
+        <p class="text-sm text-gray-500 mb-6">الاسم والوصف والشعار التي تظهر في كل صفحات الموقع.</p>
+        <div class="grid sm:grid-cols-2 gap-5">
+          ${textFields.map(([k,l])=>`
+            <div class="${k==='tagline'?'sm:col-span-2':''}">
+              <label class="block text-sm font-bold mb-2">${l}</label>
+              <input value="${s[k]||''}" oninput="setSite('${k}',this.value)"
+                class="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-gold-500">
+            </div>`).join('')}
+        </div>
+        ${s.logoUrl?`<div class="mt-4 flex items-center gap-3"><span class="text-sm text-gray-400">معاينة الشعار:</span><img src="${s.logoUrl}" class="h-12 rounded-lg border border-gray-100"></div>`:''}
+      </section>
+
+      <!-- الألوان -->
+      <section class="card p-6">
+        <h2 class="font-display font-extrabold text-lg text-forest-800 mb-1">ألوان الموقع</h2>
+        <p class="text-sm text-gray-500 mb-6">اللون الأساسي واللون المميِّز المستخدمان في الواجهة.</p>
+        <div class="flex flex-wrap gap-6">
+          ${[['colorPrimary','اللون الأساسي'],['colorAccent','اللون المميِّز']].map(([k,l])=>`
+            <div class="flex items-center gap-3">
+              <input type="color" value="${s[k]}" oninput="setSite('${k}',this.value)" class="w-12 h-12 rounded-lg border border-gray-200 cursor-pointer">
+              <div><div class="text-sm font-bold">${l}</div><div class="text-xs text-gray-400 font-mono">${s[k]}</div></div>
+            </div>`).join('')}
+        </div>
+      </section>
+
+      <!-- تسميات الخانات الست -->
+      <section class="card p-6">
+        <h2 class="font-display font-extrabold text-lg text-forest-800 mb-1">عناوين الخانات الست</h2>
+        <p class="text-sm text-gray-500 mb-6">النصوص التي تظهر في قائمة لوحة المعلم.</p>
+        <div class="grid sm:grid-cols-2 gap-5">
+          ${labelFields.map(([k,l])=>`
+            <div>
+              <label class="block text-sm font-bold mb-2 text-gray-500">${l}</label>
+              <input value="${s[k]||''}" oninput="setSite('${k}',this.value)"
+                class="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-gold-500">
+            </div>`).join('')}
+        </div>
+      </section>
+    </main>
+
+    <!-- شريط الحفظ السفلي -->
+    <div class="fixed bottom-0 inset-x-0 bg-white border-t border-gray-100 px-5 lg:px-8 py-4 flex items-center justify-between z-30">
+      <span id="saveBarLabel" class="text-sm text-gray-400">${state.siteDirty?'لديك تعديلات غير محفوظة':'لا توجد تعديلات'}</span>
+      <button id="saveBarBtn" onclick="saveSite()" class="bg-gold-500 hover:bg-gold-600 text-forest-900 font-bold px-6 py-2 rounded-xl ${state.siteDirty?'':'opacity-40'}">حفظ التعديلات</button>
+    </div>
+  </div>`;
+}
+
+/* ---------- تصدير (محاكاة) ---------- */
+function exportDoc(fmt){
+  toast(`جارٍ توليد ملف ${fmt.toUpperCase()} ...`);
+  // في الإنتاج: استدعاء الخادم — Puppeteer للـ PDF و docx/python-docx للـ Word
+  setTimeout(()=>{ if(fmt==='pdf') window.print(); else toast('في الإنتاج: يُولَّد ملف Word على الخادم'); }, 700);
+}
+
+/* ============================================================
+   RENDER
+============================================================ */
+function render(){
+  let html;
+  if(!state.session) html=loginView();
+  else if(state.session.type==='admin') html=adminView();
+  else html=dashboardView();
+
+  html += state.toast?`<div class="hideprint fixed bottom-6 right-1/2 translate-x-1/2 bg-forest-900 text-white px-6 py-3 rounded-xl shadow-xl fade-in z-50">${state.toast}</div>`:'';
+  el('app').innerHTML=html;
+}
+render();
+</script>
+</body>
+</html>
