@@ -28,19 +28,65 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [savedAt, setSavedAt] = useState<string>('');
+  // إدارة المعلمين
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [newName, setNewName] = useState('');
+  const [newMobile, setNewMobile] = useState('');
+  const [addingTeacher, setAddingTeacher] = useState(false);
+  const [lastCreated, setLastCreated] = useState<{
+    accessCode: string;
+    fullName: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (localStorage.getItem('role') !== 'ADMIN') {
       router.push('/');
       return;
     }
-    Promise.all([api.settings(), api.indicators()])
-      .then(([s, inds]) => {
+    Promise.all([api.settings(), api.indicators(), api.listTeachers()])
+      .then(([s, inds, ts]) => {
         setForm(s);
         setIndicators(inds);
+        setTeachers(ts || []);
       })
       .catch(() => router.push('/'));
   }, [router]);
+
+  // إضافة معلم: يولّد الكود ويعرضه
+  const addTeacher = async () => {
+    if (!newName.trim()) return;
+    setAddingTeacher(true);
+    try {
+      const created = await api.createTeacher({
+        fullName: newName.trim(),
+        mobile: newMobile.trim() || undefined,
+      });
+      setLastCreated({
+        accessCode: created.accessCode,
+        fullName: created.fullName,
+      });
+      setNewName('');
+      setNewMobile('');
+      setCopied(false);
+      const ts = await api.listTeachers();
+      setTeachers(ts || []);
+    } finally {
+      setAddingTeacher(false);
+    }
+  };
+
+  const removeTeacher = async (id: string) => {
+    await api.deleteTeacher(id);
+    const ts = await api.listTeachers();
+    setTeachers(ts || []);
+  };
+
+  const copyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   const set = (k: string, v: string) => {
     setForm((f: any) => ({ ...f, [k]: v }));
@@ -303,6 +349,103 @@ export default function AdminPage() {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* إدارة المعلمين */}
+        <section className="bg-white border border-gray-100 rounded-2xl p-6">
+          <h2 className="font-display font-extrabold text-lg text-forest-800 mb-1">
+            إدارة المعلمين
+          </h2>
+          <p className="text-sm text-gray-500 mb-6">
+            أضف معلماً جديداً بإدخال الاسم والجوال، وسيُولّد له كود دخول فريد
+            تنسخه وترسله له.
+          </p>
+
+          {/* نموذج الإضافة */}
+          <div className="flex flex-wrap items-end gap-3 mb-4">
+            <div className="flex-1 min-w-[180px]">
+              <label className="block text-sm font-bold mb-2">اسم المعلم</label>
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="أ. محمد العتيبي"
+                className="w-full border border-gray-200 rounded-xl px-4 py-2 outline-none focus:border-gold-500"
+              />
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <label className="block text-sm font-bold mb-2">رقم الجوال</label>
+              <input
+                value={newMobile}
+                onChange={(e) => setNewMobile(e.target.value)}
+                placeholder="05xxxxxxxx"
+                className="w-full border border-gray-200 rounded-xl px-4 py-2 outline-none focus:border-gold-500"
+              />
+            </div>
+            <button
+              onClick={addTeacher}
+              disabled={addingTeacher || !newName.trim()}
+              className="bg-forest-800 hover:bg-forest-700 text-white font-bold px-6 py-2 rounded-xl disabled:opacity-40"
+            >
+              {addingTeacher ? 'جارٍ…' : 'إضافة معلم'}
+            </button>
+          </div>
+
+          {/* بطاقة الكود المولّد */}
+          {lastCreated && (
+            <div className="mb-6 bg-gold-500/10 border border-gold-500/40 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm text-gray-500">
+                  كود المعلم {lastCreated.fullName}:
+                </div>
+                <div className="font-display text-2xl font-extrabold text-forest-800 tracking-widest">
+                  {lastCreated.accessCode}
+                </div>
+              </div>
+              <button
+                onClick={() => copyCode(lastCreated.accessCode)}
+                className="bg-gold-500 hover:bg-gold-600 text-forest-900 font-bold px-5 py-2 rounded-xl"
+              >
+                {copied ? 'تم النسخ ✓' : 'نسخ الكود'}
+              </button>
+            </div>
+          )}
+
+          {/* قائمة المعلمين */}
+          {teachers.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right">
+                <thead className="text-gray-400 border-b border-gray-100">
+                  <tr>
+                    <th className="py-2 font-medium">الاسم</th>
+                    <th className="py-2 font-medium">الكود</th>
+                    <th className="py-2 font-medium">الجوال</th>
+                    <th className="py-2 font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {teachers.map((t) => (
+                    <tr key={t.id} className="border-b border-gray-50">
+                      <td className="py-3 font-bold">{t.fullName}</td>
+                      <td className="py-3">
+                        <span className="font-mono text-forest-700">
+                          {t.accessCode}
+                        </span>
+                      </td>
+                      <td className="py-3 text-gray-500">{t.mobile || '—'}</td>
+                      <td className="py-3 text-left">
+                        <button
+                          onClick={() => removeTeacher(t.id)}
+                          className="text-sm text-red-500 hover:text-red-600"
+                        >
+                          حذف
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       </main>
 
