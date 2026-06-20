@@ -40,4 +40,4 @@ RUN npm run build
 EXPOSE 4000
 
 # عند الإقلاع: تطبيق الترحيلات + البذرة ثم تشغيل الخادم
-CMD npx prisma migrate deploy && npx prisma db seed && npm run start:prod
+CMD npx prisma db push --skip-generate && (npx prisma db seed || true) && npm run start:prod
