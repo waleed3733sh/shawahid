@@ -38,7 +38,7 @@ export const api = {
     fd.append('file', file);
     return req(`/evidence/${indicatorId}`, { method: 'POST', body: fd });
   },
-  deleteEvidence: (id: string) => req(`/evidence/${id}`, { method: 'DELETE' })
+  deleteEvidence: (id: string) => req(`/evidence/${id}`, { method: 'DELETE' }),
   // إعدادات الموقع
   settings: () => req('/settings'),
   updateSettings: (data: any) =>
