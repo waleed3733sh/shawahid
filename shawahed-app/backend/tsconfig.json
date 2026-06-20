@@ -7,8 +7,11 @@
     "esModuleInterop": true,
     "declaration": false,
     "outDir": "./dist",
+    "rootDir": "./src",
     "baseUrl": "./",
     "skipLibCheck": true,
     "strictNullChecks": false
-  }
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "prisma"]
 }
