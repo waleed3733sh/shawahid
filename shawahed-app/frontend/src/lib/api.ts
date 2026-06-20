@@ -38,7 +38,7 @@ export const api = {
     fd.append('file', file);
     return req(`/evidence/${indicatorId}`, { method: 'POST', body: fd });
   },
-  deleteEvidence: (id: string) => req(`/evidence/${id}`, { method: 'DELETE' }),
+  deleteEvidence: (id: string) => req(`/evidence/${id}`, { method: 'DELETE' })
   // إعدادات الموقع
   settings: () => req('/settings'),
   updateSettings: (data: any) =>
@@ -52,6 +52,11 @@ export const api = {
     const fd = new FormData();
     fd.append('file', file);
     return req('/settings/logo', { method: 'POST', body: fd });
+  createTeacher: (data: { fullName: string; mobile?: string }) =>
+    req('/admin/teachers', { method: 'POST', body: JSON.stringify(data) }),
+  listTeachers: () => req('/admin/teachers'),
+  deleteTeacher: (id: string) =>
+    req(`/admin/teachers/${id}`, { method: 'DELETE' }),
   },
   exportUrl: (format: 'docx' | 'pdf') => `${API}/export/${format}`,
 };
