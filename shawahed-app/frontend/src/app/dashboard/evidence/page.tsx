@@ -89,7 +89,9 @@ export default function EvidencePage() {
                 {!full && (
                   <>
                     <input
-                      ref={(el) => (inputs.current[ind.id] = el)}
+                      ref={(el) => {
+  inputs.current[ind.id] = el;
+}}
                       type="file"
                       accept="image/*"
                       capture="environment"
